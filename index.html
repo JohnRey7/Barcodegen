@@ -421,20 +421,14 @@ function validateAndConvert(raw) {
   const clean = cleanISBN(raw);
 
   if (clean.length === 10) {
-    // validate ISBN-10 check digit
-    let s = 0;
-    for (let i = 0; i < 9; i++) s += parseInt(clean[i]) * (10 - i);
-    const check = clean[9] === 'X' ? 10 : parseInt(clean[9]);
-    s += check;
-    if (s % 11 !== 0) return { error: 'Invalid ISBN-10 check digit.' };
+    if (!/^[\dX]$|^\d{9}[\dX]$/.test(clean)) return { error: 'ISBN-10 must be 10 digits or 9 digits + X.' };
+    // Convert ISBN-10 to ISBN-13 (accept as-is, don't validate check digit)
     return { isbn10: clean, isbn13: isbn10to13(clean), original: raw.trim() };
   }
 
   if (clean.length === 13) {
     if (!/^\d{13}$/.test(clean)) return { error: 'ISBN-13 must be 13 digits.' };
-    const expected = ean13Checksum(clean.slice(0, 12));
-    if (clean[12] !== expected) return { error: `Invalid ISBN-13 check digit (expected ${expected}).` };
-    // derive isbn10 if 978 prefix
+    // Accept any 13-digit number as-is (no check digit validation)
     let isbn10 = null;
     if (clean.startsWith('978')) {
       const core = clean.slice(3, 12);
@@ -446,7 +440,7 @@ function validateAndConvert(raw) {
     return { isbn10, isbn13: clean, original: raw.trim() };
   }
 
-  return { error: `Unexpected length (${clean.length}). ISBN must be 10 or 13 characters.` };
+  return { error: `Unexpected length (${clean.length}). ISBN must be 10 or 13 digits.` };
 }
 
 function formatISBN13(digits) {
