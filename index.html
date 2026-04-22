@@ -297,6 +297,17 @@
       to   { opacity: 1; transform: translateY(0); }
     }
     .output-card.visible { animation: slideUp 0.3s ease; }
+
+    /* Print styles */
+    @media print {
+      body { background: white; margin: 0; padding: 0; }
+      body::before { display: none; }
+      header, .card, footer, .isbn-info, .output-actions { display: none; }
+      .output-card { box-shadow: none; border: none; padding: 0; margin: 0; max-width: 100%; }
+      .barcode-label { display: none; }
+      #barcode-container { border: none; padding: 0; margin: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; page-break-after: avoid; }
+      #barcode-container canvas { display: block; }
+    }
   </style>
 </head>
 <body>
@@ -323,6 +334,7 @@
   <div class="options-row">
     <label>Scale
       <select id="opt-scale">
+        <option value="1">Extra Small (1×)</option>
         <option value="2">Small (2×)</option>
         <option value="3" selected>Medium (3×)</option>
         <option value="4">Large (4×)</option>
@@ -348,6 +360,7 @@
   <div class="isbn-info" id="isbn-info"></div>
   <div class="output-actions">
     <button class="btn btn-outline" onclick="copyISBN()">Copy ISBN</button>
+    <button class="btn btn-outline" onclick="printBarcode()">Print</button>
     <button class="btn" onclick="downloadPNG()">Download PNG</button>
   </div>
 </div>
@@ -573,6 +586,38 @@ function downloadPNG() {
   a.download = `barcode-${lastISBN13 || 'isbn'}.png`;
   a.href = canvas.toDataURL('image/png');
   a.click();
+}
+
+function printBarcode() {
+  const canvas = document.getElementById('barcode-canvas');
+  const printWindow = window.open('', '_blank', 'height=600,width=800');
+  const img = canvas.toDataURL('image/png');
+  
+  printWindow.document.write(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Barcode</title>
+      <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; }
+        body { display: flex; justify-content: center; align-items: center; }
+        img { max-width: 95%; max-height: 95%; object-fit: contain; }
+        @media print {
+          body { margin: 0; padding: 0; }
+          img { max-width: 90%; }
+        }
+      </style>
+    </head>
+    <body>
+      <img src="${img}" />
+    </body>
+    </html>
+  `);
+  printWindow.document.close();
+  setTimeout(() => printWindow.print(), 300);
 }
 
 function copyISBN() {
