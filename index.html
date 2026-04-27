@@ -801,33 +801,15 @@ function generate() {
   outputCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function downloadPNG() {
-  // Re-render at high resolution (scale 8) for print-quality PNG
-  const hiResCanvas = document.createElement('canvas');
-  const hiOpts = { scale: 8, fg: '#000000', bg: '#ffffff', showText: document.getElementById('opt-text').checked };
-  drawCurrent(hiResCanvas, hiOpts);
-  const a = document.createElement('a');
-  a.download = `barcode-${lastISBN || 'isbn'}.png`;
-  a.href = hiResCanvas.toDataURL('image/png');
-  a.click();
-}
+/* Build a 720×240 px canvas (2.4"×0.8" @ 300 DPI) with barcode centered */
+function buildLabelCanvas() {
+  const LABEL_W_PX = 720; // 2.4" × 300 DPI
+  const LABEL_H_PX = 240; // 0.8" × 300 DPI
 
-function printBarcode() {
-  // Brother QL-800 label: 2.4" wide × 0.8" tall at 300 DPI = 720 × 240 px
-  const LABEL_W_IN = 2.4;
-  const LABEL_H_IN = 0.8;
-  const DPI = 300;
-  const LABEL_W_PX = Math.round(LABEL_W_IN * DPI); // 720
-  const LABEL_H_PX = Math.round(LABEL_H_IN * DPI); // 240
-
-  // Render barcode at label height, let width be natural, then center onto label canvas
   const barcodeCanvas = document.createElement('canvas');
-  // Full canvas height = 89*scale (Code128 with text: 69+14+6) or 92*scale (EAN13)
-  // Use 89 to fit both formats. scale = floor(LABEL_H_PX / 89)
   const scale = Math.max(1, Math.floor(LABEL_H_PX / 89));
   drawCurrent(barcodeCanvas, { scale, fg: '#000000', bg: '#ffffff', showText: document.getElementById('opt-text').checked });
 
-  // Compose onto a fixed label-sized canvas (white background, barcode centered)
   const labelCanvas = document.createElement('canvas');
   labelCanvas.width = LABEL_W_PX;
   labelCanvas.height = LABEL_H_PX;
@@ -835,13 +817,79 @@ function printBarcode() {
   ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, LABEL_W_PX, LABEL_H_PX);
-
-  // Center barcode on label
   const bx = Math.round((LABEL_W_PX - barcodeCanvas.width) / 2);
   const by = Math.round((LABEL_H_PX - barcodeCanvas.height) / 2);
   ctx.drawImage(barcodeCanvas, bx, by);
+  return labelCanvas;
+}
 
+/* Inject 300 DPI pHYs chunk into PNG so apps read correct physical size */
+function setPngDpi(dataUrl, dpi) {
+  const base64 = dataUrl.split(',')[1];
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+
+  // Find where IDAT starts (skip PNG sig + IHDR chunk = 8+25 bytes)
+  // Insert pHYs chunk right after IHDR
+  const ppm = Math.round(dpi * 39.3701); // pixels per metre
+  const phys = new Uint8Array(21);
+  // length = 9
+  phys[0]=0; phys[1]=0; phys[2]=0; phys[3]=9;
+  // type = pHYs
+  phys[4]=112; phys[5]=72; phys[6]=89; phys[7]=115;
+  // X ppm (4 bytes big-endian)
+  phys[8]=(ppm>>24)&0xff; phys[9]=(ppm>>16)&0xff; phys[10]=(ppm>>8)&0xff; phys[11]=ppm&0xff;
+  // Y ppm
+  phys[12]=(ppm>>24)&0xff; phys[13]=(ppm>>16)&0xff; phys[14]=(ppm>>8)&0xff; phys[15]=ppm&0xff;
+  // unit = 1 (metre)
+  phys[16]=1;
+  // CRC of type+data
+  const crcData = new Uint8Array(13);
+  crcData.set(phys.slice(4,17));
+  const crc = pngCrc32(crcData);
+  phys[17]=(crc>>24)&0xff; phys[18]=(crc>>16)&0xff; phys[19]=(crc>>8)&0xff; phys[20]=crc&0xff;
+
+  // Insert after IHDR chunk (byte 33)
+  const out = new Uint8Array(bytes.length + 21);
+  out.set(bytes.slice(0, 33));
+  out.set(phys, 33);
+  out.set(bytes.slice(33), 54);
+
+  let outBin = '';
+  out.forEach(b => outBin += String.fromCharCode(b));
+  return 'data:image/png;base64,' + btoa(outBin);
+}
+
+function pngCrc32(data) {
+  let crc = 0xFFFFFFFF;
+  const table = pngCrc32.table || (pngCrc32.table = (() => {
+    const t = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      let c = i;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+      t[i] = c;
+    }
+    return t;
+  })());
+  for (let i = 0; i < data.length; i++) crc = table[(crc ^ data[i]) & 0xff] ^ (crc >>> 8);
+  return (crc ^ 0xFFFFFFFF) >>> 0;
+}
+
+function downloadPNG() {
+  const labelCanvas = buildLabelCanvas();
+  const dataUrl = setPngDpi(labelCanvas.toDataURL('image/png'), 300);
+  const a = document.createElement('a');
+  a.download = `barcode-${lastISBN || 'isbn'}.png`;
+  a.href = dataUrl;
+  a.click();
+}
+
+function printBarcode() {
+  const labelCanvas = buildLabelCanvas();
   const img = labelCanvas.toDataURL('image/png');
+  const LABEL_W_IN = 2.4;
+  const LABEL_H_IN = 0.8;
 
   const printWindow = window.open('', '_blank', 'height=400,width=600');
   printWindow.document.write(`<!DOCTYPE html>
@@ -854,16 +902,8 @@ function printBarcode() {
     @page {
       size: ${LABEL_W_IN}in ${LABEL_H_IN}in;
       margin: 0mm;
-      margin-top: 0mm;
-      margin-bottom: 0mm;
-      margin-left: 0mm;
-      margin-right: 0mm;
     }
-    html {
-      margin: 0;
-      padding: 0;
-    }
-    body {
+    html, body {
       width: ${LABEL_W_IN}in;
       height: ${LABEL_H_IN}in;
       margin: 0;
@@ -894,6 +934,7 @@ function printBarcode() {
     printWindow.print();
   }, 300);
 }
+
 
 function copyISBN() {
   if (!lastISBN) return;
