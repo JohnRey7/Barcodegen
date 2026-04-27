@@ -16,8 +16,8 @@
       --accent: #c8372d;
       --muted: #7a7060;
       --stripe: #e8e0cc;
-      --bar-dark: #111111;
-      --bar-light: #f5f0e8;
+      --bar-dark: #000000;
+      --bar-light: #ffffff;
     }
 
     body {
@@ -244,6 +244,9 @@
 
     #barcode-container canvas {
       max-width: 100%;
+      image-rendering: pixelated;
+      image-rendering: -moz-crisp-edges;
+      image-rendering: crisp-edges;
     }
 
     .isbn-info {
@@ -313,35 +316,43 @@
 <body>
 
 <header>
-  <p class="tag">Barcode Generator · EAN-13 / ISBN</p>
+  <p class="tag">Barcode Generator · EAN-13 / Code 128</p>
   <h1>ISBN to <span>Barcode</span></h1>
-  <p class="subtitle">Enter an ISBN-10 or ISBN-13 — get a print-ready EAN-13 barcode instantly.</p>
+  <p class="subtitle">Enter any ISBN — get a scannable barcode. Use Code 128 for custom ISBNs.</p>
 </header>
 
 <div class="card">
   <div class="input-section">
     <label for="isbn-input">ISBN Number</label>
     <div class="input-row">
-      <input id="isbn-input" type="text" placeholder="e.g. 978-0-306-40615-7" maxlength="17" autocomplete="off" spellcheck="false"/>
+      <input id="isbn-input" type="text" placeholder="e.g. 978-93-9178-270-6" maxlength="17" autocomplete="off" spellcheck="false"/>
       <button class="btn" onclick="generate()">Generate</button>
     </div>
-    <p class="hint">Accepts ISBN-10, ISBN-13, or with/without hyphens and spaces.</p>
+    <p class="hint">Accepts any ISBN. Use Code 128 format for custom/unregistered ISBNs — scanner returns exactly what you type.</p>
     <p class="error" id="error-msg"></p>
   </div>
 
   <hr class="divider"/>
 
   <div class="options-row">
+    <label>Format
+      <select id="opt-format">
+        <option value="code128" selected>Code 128 (exact ISBN)</option>
+        <option value="ean13">EAN-13 (standard)</option>
+      </select>
+    </label>
     <label>Scale
       <select id="opt-scale">
-        <option value="1">Extra Small (1×)</option>
         <option value="2">Small (2×)</option>
-        <option value="3" selected>Medium (3×)</option>
-        <option value="4">Large (4×)</option>
+        <option value="3">Medium (3×)</option>
+        <option value="4" selected>Large (4×)</option>
+        <option value="5">X-Large (5×)</option>
+        <option value="6">Print-Ready (6×)</option>
+        <option value="8">Label Printer (8×)</option>
       </select>
     </label>
     <label>Bar color
-      <input type="color" id="opt-fg" value="#0e0e0e"/>
+      <input type="color" id="opt-fg" value="#000000"/>
     </label>
     <label>Background
       <input type="color" id="opt-bg" value="#ffffff"/>
@@ -366,7 +377,7 @@
   </div>
 </div>
 
-<footer>ISBN BARCODE GENERATOR · EAN-13 STANDARD · WORKS OFFLINE · NO DATA SENT</footer>
+<footer>ISBN BARCODE GENERATOR · EAN-13 & CODE 128 · WORKS OFFLINE · NO DATA SENT</footer>
 
 <script>
 /* ─── EAN-13 encoder (pure JS, no lib needed) ─── */
@@ -419,6 +430,121 @@ function encodeEAN13(digits13) {
   return bits; // 95 modules
 }
 
+/* ─── Code 128 encoder (pure JS) ─── */
+/* Encodes data EXACTLY as given — scanner returns precisely what you input */
+
+const CODE128_PATTERNS = [
+  '11011001100','11001101100','11001100110','10010011000','10010001100',
+  '10001001100','10011001000','10011000100','10001100100','11001001000',
+  '11001000100','11000100100','10110011100','10011011100','10011001110',
+  '10111001100','10011101100','10011100110','11001110010','11001011100',
+  '11001001110','11011100100','11001110100','11101101110','11101001100',
+  '11100101100','11100100110','11101100100','11100110100','11100110010',
+  '11011011000','11011000110','11000110110','10100011000','10001011000',
+  '10001000110','10110001000','10001101000','10001100010','11010001000',
+  '11000101000','11000100010','10110111000','10110001110','10001101110',
+  '10111011000','10111000110','10001110110','11101110110','11010001110',
+  '11000101110','11011101000','11011100010','11011101110','11101011000',
+  '11101000110','11100010110','11101101000','11101100010','11100011010',
+  '11101111010','11001000010','11110001010','10100110000','10100001100',
+  '10010110000','10010000110','10000101100','10000100110','10110010000',
+  '10110000100','10011010000','10011000010','10000110100','10000110010',
+  '11000010010','11001010000','11110111010','11000010100','10001111010',
+  '10100111100','10010111100','10010011110','10111100100','10011110100',
+  '10011110010','11110100100','11110010100','11110010010','11011011110',
+  '11011110110','11110110110','10101111000','10100011110','10001011110',
+  '10111101000','10111100010','11110101000','11110100010','10111011110',
+  '10111101110','11101011110','11110101110',
+  '11010000100', // START A (index 103)
+  '11010010000', // START B (index 104)
+  '11010011100', // START C (index 105)
+  '1100011101011' // STOP (index 106)
+];
+
+function encodeCode128(data) {
+  // Use Code 128C for all-digit even-length, else Code 128B
+  const allDigits = /^\d+$/.test(data);
+  const useC = allDigits && data.length % 2 === 0;
+
+  let values = [];
+  let bits = '';
+
+  if (useC) {
+    // Code 128C: encode pairs of digits
+    values.push(105); // START C
+    bits += CODE128_PATTERNS[105];
+    for (let i = 0; i < data.length; i += 2) {
+      const val = parseInt(data.substr(i, 2));
+      values.push(val);
+      bits += CODE128_PATTERNS[val];
+    }
+  } else {
+    // Code 128B: encode individual characters
+    values.push(104); // START B
+    bits += CODE128_PATTERNS[104];
+    for (let i = 0; i < data.length; i++) {
+      const val = data.charCodeAt(i) - 32;
+      values.push(val);
+      bits += CODE128_PATTERNS[val];
+    }
+  }
+
+  // Calculate check digit
+  let checksum = values[0];
+  for (let i = 1; i < values.length; i++) {
+    checksum += values[i] * i;
+  }
+  checksum = checksum % 103;
+  bits += CODE128_PATTERNS[checksum];
+
+  // STOP pattern
+  bits += CODE128_PATTERNS[106];
+
+  return bits;
+}
+
+function drawCode128(canvas, data, opts) {
+  const { scale = 4, fg = '#000000', bg = '#ffffff', showText = true } = opts;
+
+  const bits = encodeCode128(data);
+  const barW = scale;
+  const barH = 69 * scale;
+  const quietZone = 10 * scale;
+  const totalW = bits.length * barW + quietZone * 2;
+  const textH = showText ? 14 * scale : 0;
+  const totalH = barH + textH + 6 * scale;
+
+  canvas.width = totalW;
+  canvas.height = totalH;
+
+  const ctx = canvas.getContext('2d');
+  ctx.imageSmoothingEnabled = false;
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, totalW, totalH);
+
+  const top = 2 * scale;
+
+  // Draw bars
+  for (let i = 0; i < bits.length; i++) {
+    if (bits[i] === '1') {
+      ctx.fillStyle = fg;
+    } else {
+      ctx.fillStyle = bg;
+    }
+    ctx.fillRect(quietZone + i * barW, top, barW, barH);
+  }
+
+  // Draw text below bars
+  if (showText) {
+    const fontSize = Math.max(8 * scale, 10);
+    ctx.fillStyle = fg;
+    ctx.font = `bold ${fontSize}px "Courier New", "Courier", monospace`;
+    ctx.textBaseline = 'top';
+    ctx.textAlign = 'center';
+    ctx.fillText(data, totalW / 2, top + barH + 2 * scale);
+  }
+}
+
 /* ─── ISBN helpers ─── */
 
 function cleanISBN(raw) {
@@ -440,6 +566,22 @@ function validateAndConvert(raw) {
     return { isbn10: clean, isbn13: isbn10to13(clean), original: raw.trim() };
   }
 
+  if (clean.length === 12) {
+    if (!/^\d{12}$/.test(clean)) return { error: 'ISBN prefix must be 12 digits.' };
+    // 12 digits = ISBN-13 without check digit, auto-calculate it
+    const check = ean13Checksum(clean);
+    const full = clean + check;
+    let isbn10 = null;
+    if (full.startsWith('978')) {
+      const core = full.slice(3, 12);
+      let s = 0;
+      for (let i = 0; i < 9; i++) s += parseInt(core[i]) * (10 - i);
+      const rem = (11 - (s % 11)) % 11;
+      isbn10 = core + (rem === 10 ? 'X' : rem.toString());
+    }
+    return { isbn10, isbn13: full, original: raw.trim(), autoCheck: true };
+  }
+
   if (clean.length === 13) {
     if (!/^\d{13}$/.test(clean)) return { error: 'ISBN-13 must be 13 digits.' };
     // Accept any 13-digit number as-is (no check digit validation)
@@ -454,7 +596,7 @@ function validateAndConvert(raw) {
     return { isbn10, isbn13: clean, original: raw.trim() };
   }
 
-  return { error: `Unexpected length (${clean.length}). ISBN must be 10 or 13 digits.` };
+  return { error: `Unexpected length (${clean.length}). Enter 10, 12, or 13 digits.` };
 }
 
 function formatISBN13(digits) {
@@ -464,62 +606,76 @@ function formatISBN13(digits) {
 /* ─── Canvas barcode renderer ─── */
 
 function drawBarcode(canvas, digits13, opts) {
-  const { scale = 3, fg = '#0e0e0e', bg = '#f5f0e8', showText = true } = opts;
+  const { scale = 4, fg = '#000000', bg = '#ffffff', showText = true } = opts;
 
   const bits = encodeEAN13(digits13);
   const barW = scale;
   const barH = 69 * scale;
-  const quietH = barH + (showText ? 12 * scale : 4 * scale);
+  const quietH = barH + (showText ? 14 * scale : 4 * scale);
   const guardH = barH + 5 * scale;
-  const quietZone = 11 * scale;
-  const totalW = bits.length * barW + quietZone * 2;
+  // EAN-13 spec: 11 modules left quiet zone, 7 modules right; use 11 for both
+  const quietZoneL = 11 * scale;
+  const quietZoneR = 11 * scale;
+  const totalW = bits.length * barW + quietZoneL + quietZoneR;
   const totalH = quietH + 4 * scale;
 
   canvas.width = totalW;
   canvas.height = totalH;
 
   const ctx = canvas.getContext('2d');
+  // Disable anti-aliasing for crisp barcode bars
+  ctx.imageSmoothingEnabled = false;
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, totalW, totalH);
 
   const top = 2 * scale;
 
-  // draw bars
+  // draw bars — fill entire bar area with bg first to ensure clean white spaces
   for (let i = 0; i < bits.length; i++) {
     const isGuard = (i < 3) || (i >= 45 && i <= 49) || (i >= 92);
     const h = isGuard ? guardH : barH;
     if (bits[i] === '1') {
       ctx.fillStyle = fg;
-      ctx.fillRect(quietZone + i * barW, top, barW, h);
+    } else {
+      ctx.fillStyle = bg;
     }
+    ctx.fillRect(quietZoneL + i * barW, top, barW, h);
   }
 
-  // text
+  // text — use OCR-B style monospace (standard for EAN-13 barcodes)
   if (showText) {
-    const fontSize = 8 * scale;
+    const fontSize = Math.max(8 * scale, 10);
     ctx.fillStyle = fg;
-    ctx.font = `${fontSize}px "DM Mono", monospace`;
+    ctx.font = `bold ${fontSize}px "Courier New", "Courier", monospace`;
     ctx.textBaseline = 'top';
 
-    const textY = top + guardH + 1 * scale;
+    const textY = top + guardH + 2 * scale;
+
+    // Clear the text area (white background behind numbers)
+    ctx.fillStyle = bg;
+    const leftTextX = quietZoneL + 3 * barW;
+    const leftTextW = 6 * 7 * barW;
+    ctx.fillRect(leftTextX, textY - 1, leftTextW, fontSize + 2);
+    const rightTextX = quietZoneL + (3 + 6*7 + 5) * barW;
+    const rightTextW = 6 * 7 * barW;
+    ctx.fillRect(rightTextX, textY - 1, rightTextW, fontSize + 2);
+
+    ctx.fillStyle = fg;
 
     // left digit (first)
     ctx.textAlign = 'right';
-    ctx.fillText(digits13[0], quietZone - 1 * scale, textY);
+    ctx.fillText(digits13[0], quietZoneL - 2 * scale, textY);
 
     // left 6 digits (positions 1-6)
-    const leftStart = quietZone + 3 * barW;
-    const leftWidth = 6 * 7 * barW;
     ctx.textAlign = 'center';
     for (let i = 0; i < 6; i++) {
-      const cx = leftStart + (i * 7 + 3.5) * barW;
+      const cx = quietZoneL + 3 * barW + (i * 7 + 3.5) * barW;
       ctx.fillText(digits13[i + 1], cx, textY);
     }
 
     // right 6 digits (positions 7-12)
-    const rightStart = quietZone + (3 + 6*7 + 5) * barW;
     for (let i = 0; i < 6; i++) {
-      const cx = rightStart + (i * 7 + 3.5) * barW;
+      const cx = quietZoneL + (3 + 6*7 + 5) * barW + (i * 7 + 3.5) * barW;
       ctx.fillText(digits13[i + 7], cx, textY);
     }
   }
@@ -527,12 +683,31 @@ function drawBarcode(canvas, digits13, opts) {
 
 /* ─── UI logic ─── */
 
-let lastISBN13 = '';
+let lastISBN = '';    // what the scanner will return
+let lastFormat = '';  // 'code128' or 'ean13'
+
+function getOpts() {
+  return {
+    scale: parseInt(document.getElementById('opt-scale').value),
+    fg: document.getElementById('opt-fg').value,
+    bg: document.getElementById('opt-bg').value,
+    showText: document.getElementById('opt-text').checked,
+  };
+}
+
+function drawCurrent(canvas, opts) {
+  if (lastFormat === 'code128') {
+    drawCode128(canvas, lastISBN, opts);
+  } else {
+    drawBarcode(canvas, lastISBN, opts);
+  }
+}
 
 function generate() {
   const input = document.getElementById('isbn-input').value.trim();
   const errEl = document.getElementById('error-msg');
   const outputCard = document.getElementById('output-card');
+  const format = document.getElementById('opt-format').value;
 
   errEl.textContent = '';
 
@@ -541,66 +716,119 @@ function generate() {
     return;
   }
 
-  const result = validateAndConvert(input);
-  if (result.error) {
-    errEl.textContent = result.error;
-    outputCard.classList.remove('visible');
-    return;
+  const clean = cleanISBN(input);
+
+  if (format === 'code128') {
+    // Code 128: encode the cleaned digits EXACTLY as-is
+    if (!/^\d+$/.test(clean)) {
+      errEl.textContent = 'ISBN must contain only digits (hyphens/spaces are removed automatically).';
+      return;
+    }
+
+    lastISBN = clean;
+    lastFormat = 'code128';
+
+    const canvas = document.getElementById('barcode-canvas');
+    const opts = getOpts();
+    drawCode128(canvas, clean, opts);
+
+    const infoEl = document.getElementById('isbn-info');
+    infoEl.innerHTML = '';
+    const blocks = [
+      { label: 'You entered', value: input },
+      { label: 'Scanner will read', value: clean },
+      { label: 'Format', value: 'Code 128' },
+      { label: '✓ Exact match', value: 'Scanner returns exactly what you typed — no check digit modification' },
+    ];
+    blocks.forEach(b => {
+      infoEl.innerHTML += `
+        <div class="info-block">
+          <div class="info-label">${b.label}</div>
+          <div class="info-value">${b.value}</div>
+        </div>`;
+    });
+
+  } else {
+    // EAN-13: standard format, requires valid check digit
+    const result = validateAndConvert(input);
+    if (result.error) {
+      errEl.textContent = result.error;
+      outputCard.classList.remove('visible');
+      return;
+    }
+
+    let isbn13 = result.isbn13;
+    let checkDigitFixed = false;
+
+    // Always fix check digit for EAN-13 — required for scanners
+    const correctCheck = ean13Checksum(isbn13.slice(0, 12));
+    if (isbn13[12] !== correctCheck) {
+      checkDigitFixed = true;
+      isbn13 = isbn13.slice(0, 12) + correctCheck;
+    }
+
+    lastISBN = isbn13;
+    lastFormat = 'ean13';
+
+    const canvas = document.getElementById('barcode-canvas');
+    const opts = getOpts();
+    drawBarcode(canvas, isbn13, opts);
+
+    const infoEl = document.getElementById('isbn-info');
+    infoEl.innerHTML = '';
+    const blocks = [
+      { label: 'You entered', value: input },
+      { label: 'Scanner will read', value: formatISBN13(isbn13) },
+      { label: 'Format', value: 'EAN-13' },
+      { label: 'Check Digit', value: isbn13[12] + (checkDigitFixed ? ' (corrected)' : ' (valid)') },
+    ];
+
+    if (checkDigitFixed) {
+      const orig = result.isbn13;
+      blocks.push({ label: '⚠ Note', value: `Check digit changed from ${orig[12]} to ${isbn13[12]}. Use Code 128 format to keep exact ISBN.` });
+    }
+
+    blocks.forEach(b => {
+      infoEl.innerHTML += `
+        <div class="info-block">
+          <div class="info-label">${b.label}</div>
+          <div class="info-value">${b.value}</div>
+        </div>`;
+    });
   }
-
-  lastISBN13 = result.isbn13;
-
-  const canvas = document.getElementById('barcode-canvas');
-  const scale = parseInt(document.getElementById('opt-scale').value);
-  const fg = document.getElementById('opt-fg').value;
-  const bg = document.getElementById('opt-bg').value;
-  const showText = document.getElementById('opt-text').checked;
-
-  drawBarcode(canvas, result.isbn13, { scale, fg, bg, showText });
-
-  // info blocks
-  const infoEl = document.getElementById('isbn-info');
-  infoEl.innerHTML = '';
-
-  const blocks = [
-    { label: 'ISBN-13', value: formatISBN13(result.isbn13) },
-    { label: 'ISBN-10', value: result.isbn10 || 'N/A (979 prefix)' },
-    { label: 'Format', value: 'EAN-13' },
-    { label: 'Check Digit', value: result.isbn13[12] },
-  ];
-
-  blocks.forEach(b => {
-    infoEl.innerHTML += `
-      <div class="info-block">
-        <div class="info-label">${b.label}</div>
-        <div class="info-value">${b.value}</div>
-      </div>`;
-  });
 
   outputCard.classList.add('visible');
   outputCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function downloadPNG() {
-  const canvas = document.getElementById('barcode-canvas');
+  // Re-render at high resolution (scale 8) for print-quality PNG
+  const hiResCanvas = document.createElement('canvas');
+  const hiOpts = { scale: 8, fg: '#000000', bg: '#ffffff', showText: document.getElementById('opt-text').checked };
+  drawCurrent(hiResCanvas, hiOpts);
   const a = document.createElement('a');
-  a.download = `barcode-${lastISBN13 || 'isbn'}.png`;
-  a.href = canvas.toDataURL('image/png');
+  a.download = `barcode-${lastISBN || 'isbn'}.png`;
+  a.href = hiResCanvas.toDataURL('image/png');
   a.click();
 }
 
 function printBarcode() {
-  const canvas = document.getElementById('barcode-canvas');
-  const printWindow = window.open('', '_blank', 'height=600,width=800');
-  const img = canvas.toDataURL('image/png');
+  // Re-render at high resolution for print quality
+  const printCanvas = document.createElement('canvas');
+  const printOpts = { scale: 10, fg: '#000000', bg: '#ffffff', showText: document.getElementById('opt-text').checked };
+  drawCurrent(printCanvas, printOpts);
+  const img = printCanvas.toDataURL('image/png');
+  // Calculate physical size: canvas pixels / 300 DPI = inches
+  const widthInches = (printCanvas.width / 300).toFixed(3);
+  const heightInches = (printCanvas.height / 300).toFixed(3);
   
+  const printWindow = window.open('', '_blank', 'height=600,width=800');
   printWindow.document.write(`
     <!DOCTYPE html>
     <html>
     <head>
       <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Barcode</title>
+      <title>Print Barcode - ${lastISBN}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
@@ -611,10 +839,13 @@ function printBarcode() {
           background: white;
         }
         img { 
-          max-width: 100%; 
-          max-height: 100%; 
-          object-fit: contain;
+          width: ${widthInches}in;
+          height: ${heightInches}in;
           display: block;
+          image-rendering: pixelated;
+          image-rendering: -moz-crisp-edges;
+          image-rendering: crisp-edges;
+          -ms-interpolation-mode: nearest-neighbor;
         }
         @page {
           margin: 0;
@@ -627,6 +858,7 @@ function printBarcode() {
             padding: 0; 
             width: 100%;
             height: 100%;
+            background: white;
           }
           body {
             display: flex;
@@ -634,10 +866,12 @@ function printBarcode() {
             align-items: center;
           }
           img { 
-            max-width: 100%; 
-            max-height: 100%;
-            margin: 0;
-            padding: 0;
+            width: ${widthInches}in;
+            height: ${heightInches}in;
+            image-rendering: pixelated;
+            image-rendering: -moz-crisp-edges;
+            image-rendering: crisp-edges;
+            -ms-interpolation-mode: nearest-neighbor;
           }
         }
       </style>
@@ -655,8 +889,8 @@ function printBarcode() {
 }
 
 function copyISBN() {
-  if (!lastISBN13) return;
-  navigator.clipboard.writeText(lastISBN13).then(() => {
+  if (!lastISBN) return;
+  navigator.clipboard.writeText(lastISBN).then(() => {
     const btn = event.target;
     const orig = btn.textContent;
     btn.textContent = 'Copied!';
@@ -686,7 +920,7 @@ function exportPTouch() {
   // Fallback: create a downloadable file
   const element = document.createElement('a');
   element.setAttribute('href', 'data:text/xml;base64,' + btoa(ptouchXml));
-  element.setAttribute('download', `barcode-${lastISBN13}.xml`);
+  element.setAttribute('download', `barcode-${lastISBN}.xml`);
   element.style.display = 'none';
   document.body.appendChild(element);
   element.click();
@@ -705,9 +939,9 @@ document.getElementById('isbn-input').addEventListener('keydown', e => {
 });
 
 // Live re-render on option change
-['opt-scale','opt-fg','opt-bg','opt-text'].forEach(id => {
+['opt-format','opt-scale','opt-fg','opt-bg','opt-text'].forEach(id => {
   document.getElementById(id).addEventListener('change', () => {
-    if (lastISBN13) generate();
+    if (lastISBN) generate();
   });
 });
 </script>
