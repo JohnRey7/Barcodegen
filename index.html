@@ -302,14 +302,27 @@
     .output-card.visible { animation: slideUp 0.3s ease; }
 
     /* Print styles */
+    @page {
+      size: 2.4in 0.8in portrait;
+      margin: 0mm;
+    }
     @media print {
-      body { background: white; margin: 0; padding: 0; }
-      body::before { display: none; }
-      header, .card, footer, .isbn-info, .output-actions { display: none; }
-      .output-card { box-shadow: none; border: none; padding: 0; margin: 0; max-width: 100%; }
-      .barcode-label { display: none; }
-      #barcode-container { border: none; padding: 0; margin: 0; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center; page-break-after: avoid; }
-      #barcode-container canvas { display: block; }
+      * { margin: 0 !important; padding: 0 !important; }
+      body { background: white; }
+      header, .card, .output-card, footer { display: none !important; }
+      #print-only {
+        display: block !important;
+        width: 2.4in;
+        height: 0.8in;
+        overflow: hidden;
+      }
+      #print-label-img {
+        display: block;
+        width: 2.4in;
+        height: 0.8in;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+      }
     }
   </style>
 </head>
@@ -375,6 +388,10 @@
     <button class="btn btn-outline" onclick="exportPTouch()">Export P-touch</button>
     <button class="btn" onclick="downloadPNG()">Download PNG</button>
   </div>
+</div>
+
+<div id="print-only" style="display:none">
+  <img id="print-label-img" src="" />
 </div>
 
 <footer>ISBN BARCODE GENERATOR · EAN-13 & CODE 128 · WORKS OFFLINE · NO DATA SENT</footer>
@@ -888,51 +905,12 @@ function downloadPNG() {
 function printBarcode() {
   const labelCanvas = buildLabelCanvas();
   const img = labelCanvas.toDataURL('image/png');
-  const LABEL_W_IN = 2.4;
-  const LABEL_H_IN = 0.8;
 
-  const printWindow = window.open('', '_blank', 'height=400,width=600');
-  printWindow.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title></title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    @page {
-      size: ${LABEL_W_IN}in ${LABEL_H_IN}in;
-      margin: 0mm;
-    }
-    html, body {
-      width: ${LABEL_W_IN}in;
-      height: ${LABEL_H_IN}in;
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #fff;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      color-adjust: exact;
-    }
-    img {
-      display: block;
-      width: ${LABEL_W_IN}in;
-      height: ${LABEL_H_IN}in;
-      image-rendering: pixelated;
-      image-rendering: -moz-crisp-edges;
-      image-rendering: crisp-edges;
-    }
-  </style>
-</head>
-<body>
-  <img src="${img}" />
-</body>
-</html>`);
-  printWindow.document.close();
-  setTimeout(() => {
-    printWindow.focus();
-    printWindow.print();
-  }, 300);
+  // Put the label image into the hidden print-only container
+  const el = document.getElementById('print-label-img');
+  el.src = img;
+
+  window.print();
 }
 
 
