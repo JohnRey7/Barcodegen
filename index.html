@@ -848,21 +848,31 @@ function printBarcode() {
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Print - ${lastISBN}</title>
+  <title></title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     @page {
       size: ${LABEL_W_IN}in ${LABEL_H_IN}in;
-      margin: 0;
+      margin: 0mm;
+      margin-top: 0mm;
+      margin-bottom: 0mm;
+      margin-left: 0mm;
+      margin-right: 0mm;
     }
-    html, body {
+    html {
+      margin: 0;
+      padding: 0;
+    }
+    body {
       width: ${LABEL_W_IN}in;
       height: ${LABEL_H_IN}in;
       margin: 0;
       padding: 0;
+      overflow: hidden;
       background: #fff;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
+      color-adjust: exact;
     }
     img {
       display: block;
