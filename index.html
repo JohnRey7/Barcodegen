@@ -361,6 +361,7 @@
   <div class="output-actions">
     <button class="btn btn-outline" onclick="copyISBN()">Copy ISBN</button>
     <button class="btn btn-outline" onclick="printBarcode()">Print</button>
+    <button class="btn btn-outline" onclick="exportPTouch()">Export P-touch</button>
     <button class="btn" onclick="downloadPNG()">Download PNG</button>
   </div>
 </div>
@@ -602,12 +603,42 @@ function printBarcode() {
       <title>Barcode</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        html, body { width: 100%; height: 100%; }
-        body { display: flex; justify-content: center; align-items: center; }
-        img { max-width: 95%; max-height: 95%; object-fit: contain; }
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; }
+        body { 
+          display: flex; 
+          justify-content: center; 
+          align-items: center;
+          background: white;
+        }
+        img { 
+          max-width: 100%; 
+          max-height: 100%; 
+          object-fit: contain;
+          display: block;
+        }
+        @page {
+          margin: 0;
+          padding: 0;
+          size: auto;
+        }
         @media print {
-          body { margin: 0; padding: 0; }
-          img { max-width: 90%; }
+          html, body { 
+            margin: 0; 
+            padding: 0; 
+            width: 100%;
+            height: 100%;
+          }
+          body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+          }
+          img { 
+            max-width: 100%; 
+            max-height: 100%;
+            margin: 0;
+            padding: 0;
+          }
         }
       </style>
     </head>
@@ -617,7 +648,10 @@ function printBarcode() {
     </html>
   `);
   printWindow.document.close();
-  setTimeout(() => printWindow.print(), 300);
+  setTimeout(() => {
+    printWindow.focus();
+    printWindow.print();
+  }, 500);
 }
 
 function copyISBN() {
@@ -628,6 +662,41 @@ function copyISBN() {
     btn.textContent = 'Copied!';
     setTimeout(() => btn.textContent = orig, 1500);
   });
+}
+
+function exportPTouch() {
+  const canvas = document.getElementById('barcode-canvas');
+  const img = canvas.toDataURL('image/png').split(',')[1]; // base64
+  
+  // Create P-touch template XML
+  const ptouchXml = `<?xml version="1.0" encoding="utf-8"?>
+<Document>
+  <Paper>
+    <PaperSize name="2.4x1 label" width="576" height="240" />
+    <MarginSettings top="0" left="0" right="0" bottom="0" />
+  </Paper>
+  <Objects>
+    <ImageObject name="barcode" x="0" y="0" width="576" height="240">
+      <Data encoding="base64">${img}</Data>
+    </ImageObject>
+  </Objects>
+</Document>`;
+
+  // Create a simple text-based format that P-touch can import
+  // Fallback: create a downloadable file
+  const element = document.createElement('a');
+  element.setAttribute('href', 'data:text/xml;base64,' + btoa(ptouchXml));
+  element.setAttribute('download', `barcode-${lastISBN13}.xml`);
+  element.style.display = 'none';
+  document.body.appendChild(element);
+  element.click();
+  document.body.removeChild(element);
+  
+  // Show success message
+  const btn = event.target;
+  const orig = btn.textContent;
+  btn.textContent = 'Exported!';
+  setTimeout(() => btn.textContent = orig, 1500);
 }
 
 // Enter key support
