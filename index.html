@@ -904,13 +904,17 @@ function downloadPNG() {
 
 function printBarcode() {
   const labelCanvas = buildLabelCanvas();
-  const img = labelCanvas.toDataURL('image/png');
+  const dataUrl = labelCanvas.toDataURL('image/png');
 
-  // Put the label image into the hidden print-only container
   const el = document.getElementById('print-label-img');
-  el.src = img;
 
-  window.print();
+  // Wait for the new image to fully load before printing
+  el.onload = function() {
+    el.onload = null;
+    window.print();
+  };
+
+  el.src = dataUrl;
 }
 
 
